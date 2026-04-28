@@ -40,5 +40,6 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+filterwarnings = ["ignore:Monkey-patching ssl:gevent.monkey.MonkeyPatchWarning"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
