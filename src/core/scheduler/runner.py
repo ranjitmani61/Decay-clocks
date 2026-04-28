@@ -43,6 +43,8 @@ def reconcile_in_review_nodes(
         if node.status_changed_at is None:
             # Never auto‑recover if we don’t know when it entered IN_REVIEW
             continue
+            # Never auto‑recover if we don’t know when it entered IN_REVIEW
+            continue
             continue
         in_review_since = node.status_changed_at
         if (now - in_review_since) < timedelta(days=IN_REVIEW_COOLDOWN_DAYS):
