@@ -25,7 +25,8 @@ def update_axis_performance(
     if drift_metric is None:
         return _clamp(current_r_p)
     if drift_mapping is None:
-        drift_mapping = lambda d: min(1.0, d)
+        def drift_mapping(d):
+            return min(1.0, d)
     penalty = drift_mapping(drift_metric)
     return _clamp(current_r_p - penalty)
 

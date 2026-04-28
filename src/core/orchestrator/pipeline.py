@@ -2,7 +2,7 @@
 from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 from sqlalchemy.orm import Session
 
 from src.core.models.node import Node, NodeStatus, AuditLog

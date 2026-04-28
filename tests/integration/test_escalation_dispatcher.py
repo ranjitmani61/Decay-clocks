@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from src.core.models.node import Base, Node, NodeClass, Criticality, NodeStatus, EscalationTask
+from src.core.models.node import Base, Node, NodeClass, Criticality, EscalationTask
 from src.core.orchestrator.escalation import create_escalation_task
 
 TEST_DB_URL = "postgresql://dc:dcpass@localhost:5432/decay_clocks_test"

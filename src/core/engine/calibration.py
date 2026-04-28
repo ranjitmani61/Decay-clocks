@@ -3,7 +3,6 @@
 All functions are pure, stateless, and auditable.
 """
 from __future__ import annotations
-import math
 
 # --- Signal quality (Beta‑Binomial conjugate model) ---
 

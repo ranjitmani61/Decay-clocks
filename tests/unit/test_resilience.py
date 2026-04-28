@@ -1,5 +1,4 @@
 """Unit tests for the autonomous resilience engine."""
-import pytest
 from datetime import datetime, timezone, timedelta
 from src.core.orchestrator.resilience import (
     should_auto_suspend,

@@ -39,9 +39,9 @@ def test_update_quality_score_modifies_entry(empty_catalog):
 def test_find_signals_for_node_filters_by_tags_and_affinity(empty_catalog):
     sid1 = create_signal(empty_catalog, "REGULATORY", ["EU"], 0.4,
                          ["ML_MODEL"])
-    sid2 = create_signal(empty_catalog, "REGULATORY", ["EU"], 0.3,
+    create_signal(empty_catalog, "REGULATORY", ["EU"], 0.3,
                          ["BUSINESS_RULE_SET"])
-    sid3 = create_signal(empty_catalog, "MACROECONOMIC", ["US"], 0.1,
+    create_signal(empty_catalog, "MACROECONOMIC", ["US"], 0.1,
                          ["ML_MODEL"])
     # node with tags ["EU"], class "ML_MODEL"
     results = find_signals_for_node(empty_catalog,

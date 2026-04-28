@@ -1,4 +1,3 @@
-import math
 from hypothesis import assume, given, strategies as st
 from hypothesis.strategies import floats, lists, tuples
 from src.core.engine.reliability_dynamics import (

@@ -1,5 +1,4 @@
 """In‑memory signal catalogue for API MVP."""
-import uuid
 from src.core.signals.catalogue import create_signal
 
 _catalogue = {}

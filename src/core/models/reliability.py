@@ -8,9 +8,7 @@ by the Reliability Engine; this model stores only the raw state.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
 from enum import Enum as PyEnum
-from typing import Optional
 
 from sqlalchemy import (
     Column,

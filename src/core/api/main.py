@@ -63,7 +63,7 @@ def serialize_node(node: Node) -> dict:
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
-    start_time = time.time()
+    time.time()
     response = await call_next(request)
     REQUEST_COUNT.labels(
         method=request.method,

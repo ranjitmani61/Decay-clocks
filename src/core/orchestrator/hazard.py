@@ -4,7 +4,7 @@ Returns a discrete action (ACTIVE, PROVISIONAL, ESCALATE) and a continuous hazar
 """
 from __future__ import annotations
 from enum import Enum
-from typing import Dict, Tuple
+from typing import Tuple
 
 class GovernanceAction(str, Enum):
     ACTIVE = "ACTIVE"

@@ -1,5 +1,4 @@
 """Test the Bayesian calibration engine."""
-import math
 import pytest
 from src.core.engine.calibration import (
     update_signal_quality,

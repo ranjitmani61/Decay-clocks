@@ -64,7 +64,7 @@ def process_raw_events(
 ) -> List[Dict[str, Any]]:
     """Produce shock events from raw events after debounce and matching."""
     matched_signals = match_signals_to_nodes(catalogue, node_domain_tags, node_class)
-    sig_by_id = {s["signal_id"]: s for s in matched_signals}
+    {s["signal_id"]: s for s in matched_signals}
     shocks = []
     for event in raw_events:
         sig_type = event.get("type", "")

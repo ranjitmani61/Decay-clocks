@@ -1,7 +1,7 @@
 """Escalation Dispatcher: creates human‑review tasks in the database."""
 from __future__ import annotations
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from src.core.models.node import Node, EscalationTask

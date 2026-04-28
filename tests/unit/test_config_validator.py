@@ -1,5 +1,4 @@
 """Unit tests for configuration validation."""
-import pytest
 from src.core.orchestrator.config_validator import (
     validate_cost_config,
     validate_debounce_config,

@@ -1,5 +1,5 @@
 """Prometheus metrics for the Decay Clocks API."""
-from prometheus_client import Counter, generate_latest, REGISTRY
+from prometheus_client import Counter
 
 REQUEST_COUNT = Counter(
     "decayclocks_api_requests_total",
