@@ -1,8 +1,9 @@
+"""Multi‑axis reliability state update functions."""
 from __future__ import annotations
 import math
 from typing import List, Dict, Callable, Tuple, Optional
 
-_EPSILON = 1e-3   # values below 0.001 are treated as 0
+_EPSILON = 1e-3
 
 def _clamp(val: float) -> float:
     if val <= _EPSILON:
@@ -46,10 +47,20 @@ def update_axis_regulatory(current_r_r: float, regulatory_events: List[str]) -> 
             current_r_r = current_r_r - 0.1
     return _clamp(current_r_r)
 
-def update_axis_temporal(current_r_t: float, elapsed_days: float, alpha: float) -> float:
+def update_axis_temporal(
+    current_r_t: float,   # ignored, kept for compatibility
+    elapsed_days: float,
+    alpha: float
+) -> float:
+    """Return temporal freshness based purely on elapsed time.
+    
+    The stored r_t is not used; the correct value is computed from
+    the time since last validation, not from the already‑decayed value.
+    This prevents compounding decay on repeated pipeline runs.
+    """
     if elapsed_days <= 0:
-        return _clamp(current_r_t)
-    return _clamp(current_r_t * math.exp(-alpha * elapsed_days))
+        return 1.0
+    return _clamp(math.exp(-alpha * elapsed_days))
 
 def compute_reliability_vector(
     *,
@@ -67,5 +78,5 @@ def compute_reliability_vector(
     new_r_p = update_axis_performance(r_p, drift_metric, drift_mapping)
     new_r_c = update_axis_context(r_c, macro_signals)
     new_r_r = update_axis_regulatory(r_r, regulatory_events)
-    new_r_t = update_axis_temporal(r_t, elapsed_days, alpha)
+    new_r_t = update_axis_temporal(r_t, elapsed_days, alpha)   # r_t ignored inside
     return (new_r_s, new_r_p, new_r_c, new_r_r, new_r_t)

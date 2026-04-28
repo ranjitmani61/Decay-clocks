@@ -11,13 +11,13 @@ from src.core.signals.bus import process_raw_events
 from src.core.orchestrator.config_validator import validate_cost_config, validate_debounce_config
 from src.core.orchestrator.hazard import compute_governance_action, GovernanceAction
 from src.core.orchestrator.escalation import create_escalation_task
-
+from src.core.utils.logging import setup_logging
+from src.core.utils.metrics import PIPELINE_RUNS, STATE_TRANSITIONS
 
 def _ensure_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
-
 
 def _serialize_payload(obj):
     if isinstance(obj, uuid.UUID):
@@ -29,7 +29,6 @@ def _serialize_payload(obj):
     if isinstance(obj, list):
         return [_serialize_payload(i) for i in obj]
     return obj
-
 
 def process_node_lifecycle(
     *,
@@ -54,6 +53,8 @@ def process_node_lifecycle(
     debounce_errors = validate_debounce_config(debounce_config)
     if debounce_errors:
         raise ValueError("Invalid debounce_config: " + "; ".join(debounce_errors))
+
+    old_status = node.status
 
     R = node.reliability_vector
 
@@ -109,7 +110,6 @@ def process_node_lifecycle(
 
     if action == GovernanceAction.ESCALATE:
         node.status = NodeStatus.IN_REVIEW
-        # Create an escalation task
         create_escalation_task(
             node_id=node.node_id,
             team=node.owner_team,
@@ -122,6 +122,11 @@ def process_node_lifecycle(
         node.status = NodeStatus.PROVISIONAL
     else:
         node.status = NodeStatus.ACTIVE
+
+    if node.status != old_status:
+        STATE_TRANSITIONS.labels(
+            from_status=old_status.value, to_status=node.status.value
+        ).inc()
 
     payload = {"new_R": list(new_R), "shocks": shocks, "hazard": hazard}
     db.add(AuditLog(
@@ -137,3 +142,4 @@ def process_node_lifecycle(
         ))
 
     db.commit()
+    PIPELINE_RUNS.inc()

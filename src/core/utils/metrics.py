@@ -14,3 +14,9 @@ ESCALATION_TASKS = Counter(
     "decayclocks_escalation_tasks_total",
     "Total escalation tasks created",
 )
+
+STATE_TRANSITIONS = Counter(
+    "decayclocks_state_transitions_total",
+    "Total governance state transitions",
+    ["from_status", "to_status"],
+)
