@@ -11,13 +11,24 @@ from src.core.signals.bus import process_raw_events
 from src.core.orchestrator.config_validator import validate_cost_config, validate_debounce_config
 from src.core.orchestrator.hazard import compute_governance_action, GovernanceAction
 from src.core.orchestrator.escalation import create_escalation_task
-from src.core.utils.logging import setup_logging
 from src.core.utils.metrics import PIPELINE_RUNS, STATE_TRANSITIONS
+
+
+# Severity ordering for monotonic state transitions
+_SEVERITY = {
+    NodeStatus.ACTIVE: 0,
+    NodeStatus.PROVISIONAL: 1,
+    NodeStatus.IN_REVIEW: 2,
+    NodeStatus.SUSPENDED: 3,
+    NodeStatus.RETIRED: 4,
+}
+
 
 def _ensure_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
 
 def _serialize_payload(obj):
     if isinstance(obj, uuid.UUID):
@@ -29,6 +40,7 @@ def _serialize_payload(obj):
     if isinstance(obj, list):
         return [_serialize_payload(i) for i in obj]
     return obj
+
 
 def process_node_lifecycle(
     *,
@@ -46,7 +58,6 @@ def process_node_lifecycle(
     if node is None:
         raise ValueError(f"Node not found: {node_id}")
 
-    # Validate configurations
     cost_errors = validate_cost_config(cost_config)
     if cost_errors:
         raise ValueError("Invalid cost_config: " + "; ".join(cost_errors))
@@ -56,8 +67,8 @@ def process_node_lifecycle(
 
     old_status = node.status
 
+    # 1. Update the reliability vector from current state + new signals
     R = node.reliability_vector
-
     ref_time = node.last_validation_time or node.registration_time
     if ref_time.tzinfo is None:
         ref_time = ref_time.replace(tzinfo=timezone.utc)
@@ -73,10 +84,7 @@ def process_node_lifecycle(
         debounce_config=debounce_config,
     )
 
-    reg_events = []
-    macro_signals = []
-    struct_events = []
-    drift_metric = None
+    reg_events, macro_signals, struct_events, drift_metric = [], [], [], None
     for sh in shocks:
         sig = catalogue.get(sh["signal_id"])
         if not sig:
@@ -103,42 +111,58 @@ def process_node_lifecycle(
         macro_signals=macro_signals,
         regulatory_events=reg_events,
     )
-
     node.r_s, node.r_p, node.r_c, node.r_r, node.r_t = new_R
 
-    action, hazard = compute_governance_action(new_R, cost_config)
+    # 2. Compute what the hazard function suggests, but don't downgrade status
+    suggested_action, hazard = compute_governance_action(new_R, cost_config)
 
-    if action == GovernanceAction.ESCALATE:
-        node.status = NodeStatus.IN_REVIEW
-        create_escalation_task(
-            node_id=node.node_id,
-            team=node.owner_team,
-            reason=f"Governance escalation (hazard={hazard:.3f})",
-            db=db,
-            now=now_utc,
-            deadline_hours=escalation_deadline_hours,
-        )
-    elif action == GovernanceAction.PROVISIONAL:
-        node.status = NodeStatus.PROVISIONAL
-    else:
-        node.status = NodeStatus.ACTIVE
+    # Map suggested action to a target status
+    target_status = {
+        GovernanceAction.ACTIVE: NodeStatus.ACTIVE,
+        GovernanceAction.PROVISIONAL: NodeStatus.PROVISIONAL,
+        GovernanceAction.ESCALATE: NodeStatus.IN_REVIEW,
+    }.get(suggested_action, NodeStatus.ACTIVE)
 
+    # 3. Only upgrade status, never downgrade automatically
+    if _SEVERITY[target_status] > _SEVERITY[old_status]:
+        node.status = target_status
+        # If entering IN_REVIEW for the first time, create escalation task
+        if target_status == NodeStatus.IN_REVIEW and old_status != NodeStatus.IN_REVIEW:
+            create_escalation_task(
+                node_id=node.node_id,
+                team=node.owner_team,
+                reason=f"Governance escalation (hazard={hazard:.3f})",
+                db=db,
+                now=now_utc,
+                deadline_hours=escalation_deadline_hours,
+            )
+    # If already in a high‑urgency state and hazard stays high, keep it
+    # If hazard drops, still keep the high‑urgency state until manual recertification
+
+    # 4. Record state transition if status changed
     if node.status != old_status:
+        node.status_changed_at = now_utc
         STATE_TRANSITIONS.labels(
             from_status=old_status.value, to_status=node.status.value
         ).inc()
 
+    # 5. Audit log
     payload = {"new_R": list(new_R), "shocks": shocks, "hazard": hazard}
     db.add(AuditLog(
         node_id=node.node_id,
         event_type="reliability_updated",
         event_payload=_serialize_payload(payload),
     ))
-    if action != GovernanceAction.ACTIVE:
+    if node.status != old_status:
+        node.status_changed_at = now_utc
         db.add(AuditLog(
             node_id=node.node_id,
             event_type="status_changed",
-            event_payload=_serialize_payload({"action": action.value, "hazard": hazard}),
+            event_payload=_serialize_payload({
+                "from": old_status.value,
+                "to": node.status.value,
+                "hazard": hazard,
+            }),
         ))
 
     db.commit()
