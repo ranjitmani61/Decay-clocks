@@ -9,7 +9,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../../docker/postgres:/docker-entrypoint-initdb.d   # create temporal user/db
+      - ../postgres/init-temporal.sql:/docker-entrypoint-initdb.d/init-temporal.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dc -d decay_clocks"]
       interval: 2s
@@ -34,6 +34,34 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://dc:dcpass@postgres:5432/decay_clocks
+      - REDIS_URL=redis://redis:6379/0
+      - TEMPORAL_HOST=temporal:7233
+    depends_on:
+      - postgres
+      - redis
+      - temporal
+    command: uvicorn src.core.api.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://dc:dcpass@postgres:5432/decay_clocks
+      - TEMPORAL_HOST=temporal:7233
+    depends_on:
+      - postgres
+      - temporal
+    command: python src/worker/run_worker.py
 
 volumes:
   pgdata:
