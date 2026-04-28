@@ -1,0 +1,3 @@
+# Decay Clocks
+**Multi‑axis reliability governance layer with cost‑informed escalation.**
+…
