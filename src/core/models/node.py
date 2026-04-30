@@ -4,7 +4,7 @@ import uuid
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
-    Column, DateTime, Float, String, Enum as SAEnum,
+    Column, DateTime, Float, String, Boolean, Enum as SAEnum,
     ARRAY, Interval, text, JSON, ForeignKey,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -48,6 +48,7 @@ class Node(Base):
     owner_team = Column(String, nullable=False)
     criticality = Column(SAEnum(Criticality, name="criticality_t"), nullable=False)
     domain_tags = Column(ARRAY(String), default=[])
+    environment = Column(String, default="production")
     r_s = Column(Float, default=1.0)
     r_p = Column(Float, default=1.0)
     r_c = Column(Float, default=1.0)
@@ -87,8 +88,30 @@ class EscalationTask(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     node_id = Column(UUID(as_uuid=True), ForeignKey("nodes.node_id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=text("now()"))
+    notes = Column(String, nullable=True)
     deadline = Column(DateTime(timezone=True), nullable=False)
     status = Column(String, default="PENDING")
-    status_changed_at = Column(DateTime(timezone=True), server_default=text("now()"))
     assigned_team = Column(String)
-    notes = Column(String, nullable=True)
+
+class DependencyEdge(Base):
+    __tablename__ = "dependency_edges"
+    edge_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    parent_node_id = Column(UUID(as_uuid=True), ForeignKey("nodes.node_id"), nullable=False)
+    child_node_id = Column(UUID(as_uuid=True), ForeignKey("nodes.node_id"), nullable=False)
+    edge_type = Column(String(50), nullable=False)
+    propagation_coeffs = Column(JSON, nullable=False)  # {"R_s": 0.9, "R_p": 0.4, ...}
+    created_at = Column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class CostConfig(Base):
+    """Store the active cost configuration for the governance engine."""
+    __tablename__ = "cost_config"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    active = Column(Boolean, default=True)
+    weights = Column(JSON, nullable=False)
+    C_err = Column(Float, nullable=False)
+    C_int = Column(Float, nullable=False)
+    provisional_hazard = Column(Float, nullable=False)
+    floor_axes = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text("now()"))
+    environment = Column(String, default="production")

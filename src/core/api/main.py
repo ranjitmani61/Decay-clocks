@@ -2,6 +2,7 @@ from __future__ import annotations
 import uuid
 import time
 from datetime import datetime, timezone
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import Response
@@ -10,19 +11,30 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from prometheus_client import generate_latest
 
-from src.core.models.node import Node, NodeClass, Criticality
+from src.core.models.node import Node, NodeClass, Criticality, CostConfig
 from src.core.orchestrator.pipeline import process_node_lifecycle
 from src.core.api.database import get_db
+from src.core.api.config_loader import get_active_cost_config
 from src.core.api.catalogue import get_catalogue
 from src.core.signals.bus import DEFAULT_DEBOUNCE_HOURS as DEBOUNCE
 from src.core.utils.metrics import REQUEST_COUNT, PIPELINE_RUNS
 from src.core.utils.logging import setup_logging
+from src.core.output.wrapper import wrap_decision
 
-# Initialise structured logging
+def _ensure_datetime(ts):
+    """Convert an ISO‑8601 timestamp string to a timezone‑aware datetime."""
+    if isinstance(ts, datetime):
+        return ts
+    try:
+        # handle 'Z' suffix
+        s = str(ts).replace("Z", "+00:00")
+        return datetime.fromisoformat(s)
+    except Exception:
+        return datetime.now(timezone.utc)
+
 setup_logging()
 
 app = FastAPI(title="Decay Clocks API", version="1.0.0")
-
 
 class NodeCreate(BaseModel):
     node_class: str
@@ -31,11 +43,14 @@ class NodeCreate(BaseModel):
     criticality: str
     domain_tags: list[str] = []
     decay_alpha: float = 0.01
-
+    environment: str = "production"
 
 class SignalIngest(BaseModel):
     raw_events: list[dict]
 
+class WrapRequest(BaseModel):
+    node_id: str
+    original_output: Dict[str, Any]
 
 def serialize_node(node: Node) -> dict:
     return {
@@ -60,10 +75,9 @@ def serialize_node(node: Node) -> dict:
         if node.registration_time else None,
     }
 
-
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
-    time.time()
+    start = time.time()
     response = await call_next(request)
     REQUEST_COUNT.labels(
         method=request.method,
@@ -71,7 +85,6 @@ async def metrics_middleware(request: Request, call_next):
         status=response.status_code,
     ).inc()
     return response
-
 
 @app.post("/nodes", status_code=201)
 def create_node(node_in: NodeCreate, db: Session = Depends(get_db)):
@@ -88,12 +101,12 @@ def create_node(node_in: NodeCreate, db: Session = Depends(get_db)):
         criticality=criticality,
         domain_tags=node_in.domain_tags,
         decay_alpha=node_in.decay_alpha,
+        environment=node_in.environment,
     )
     db.add(node)
     db.commit()
     db.refresh(node)
     return serialize_node(node)
-
 
 @app.get("/nodes/{node_id}")
 def get_node(node_id: uuid.UUID, db: Session = Depends(get_db)):
@@ -102,6 +115,25 @@ def get_node(node_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Node not found")
     return serialize_node(node)
 
+def get_active_cost_config(db: Session) -> dict:
+    """Return the currently active cost configuration from the database."""
+    row = db.query(CostConfig).filter(CostConfig.active == True).first()
+    if not row:
+        # Fallback to production defaults
+        return {
+            "weights": {"s": 0.2, "p": 0.2, "c": 0.2, "r": 0.2, "t": 0.2},
+            "C_err": 500.0,
+            "C_int": 1000.0,
+            "provisional_hazard": 0.2,
+            "floor_axes": {"r": 0.2, "s": 0.3},
+        }
+    return {
+        "weights": row.weights,
+        "C_err": row.C_err,
+        "C_int": row.C_int,
+        "provisional_hazard": row.provisional_hazard,
+        "floor_axes": row.floor_axes,
+    }
 
 @app.post("/signals/ingest")
 def ingest_signals(payload: SignalIngest,
@@ -118,19 +150,13 @@ def ingest_signals(payload: SignalIngest,
     conditions = [Node.domain_tags.any(tag) for tag in all_tags]
     nodes = db.query(Node).filter(or_(*conditions)).all()
 
-    cost_config = {
-        "weights": {"s": 0.2, "p": 0.2, "c": 0.2, "r": 0.2, "t": 0.2},
-        "C_err": 500.0,
-        "C_int": 1000.0,
-        "provisional_hazard": 0.2,
-        "floor_axes": {"r": 0.2, "s": 0.1},
-    }
+    cost_config = get_active_cost_config(db)
     for node in nodes:
         process_node_lifecycle(
             node_id=node.node_id,
             db=db,
             catalogue=catalogue,
-            raw_events=payload.raw_events,
+            raw_events=[{**ev, "timestamp": _ensure_datetime(ev.get("timestamp"))} for ev in payload.raw_events],
             now=now,
             debounce_config=DEBOUNCE,
             cost_config=cost_config,
@@ -139,11 +165,70 @@ def ingest_signals(payload: SignalIngest,
         updated.append(str(node.node_id))
     return {"updated_nodes": updated}
 
+@app.post("/decisions/wrap")
+def wrap_endpoint(req: WrapRequest, db: Session = Depends(get_db)):
+    try:
+        nid = uuid.UUID(req.node_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid node_id")
+    try:
+        wrapped = wrap_decision(node_id=nid, original_output=req.original_output, db=db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return wrapped
 
 @app.get("/metrics")
 def metrics():
     return Response(content=generate_latest(), media_type="text/plain")
 
+class CostConfigSet(BaseModel):
+    """Request body for updating the active cost configuration."""
+    weights: Dict[str, float]
+    C_err: float
+    C_int: float
+    provisional_hazard: float
+    floor_axes: Dict[str, float]
+    environment: str = "production"
+
+@app.post("/config/cost")
+def set_cost_config(config: CostConfigSet, db: Session = Depends(get_db)):
+    """Replace the currently active cost configuration.
+    
+    The new configuration becomes effective for all subsequent signal
+    ingestions and decision wraps.
+    """
+    # Deactivate any existing active config
+    db.query(CostConfig).update({"active": False})
+    # Create the new active config
+    new_cfg = CostConfig(
+        active=True,
+        weights=config.weights,
+        C_err=config.C_err,
+        C_int=config.C_int,
+        provisional_hazard=config.provisional_hazard,
+        floor_axes=config.floor_axes,
+        environment=config.environment,
+    )
+    db.add(new_cfg)
+    db.commit()
+    return {"message": "Cost config updated", "id": str(new_cfg.id)}
+
+class AdminReset(BaseModel):
+    confirm: bool = True
+
+@app.post("/admin/reset")
+def admin_reset(db: Session = Depends(get_db)):
+    """Delete all nodes and dependent records in the correct order."""
+    from src.core.models.node import EscalationTask, AuditLog, DependencyEdge, Node
+    # Only delete demo data
+    demo_nodes = db.query(Node.node_id).filter(Node.environment == "demo").subquery()
+    db.query(EscalationTask).filter(EscalationTask.node_id.in_(demo_nodes)).delete(synchronize_session='fetch')
+    db.query(AuditLog).filter(AuditLog.node_id.in_(demo_nodes)).delete(synchronize_session='fetch')
+    db.query(DependencyEdge).filter(DependencyEdge.parent_node_id.in_(demo_nodes)).delete(synchronize_session='fetch')
+    db.query(Node).filter(Node.environment == "demo").delete()
+    db.query(CostConfig).filter(CostConfig.environment == "demo").delete()
+    db.commit()
+    return {"status": "ok", "message": "All demo data cleared. Production data untouched."}
 
 @app.get("/health")
 def health():
