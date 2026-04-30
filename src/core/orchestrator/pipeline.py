@@ -129,11 +129,11 @@ def process_node_lifecycle(
     if "hazard_mode" in cost_config and cost_config["hazard_mode"] != "linear":
         from src.core.orchestrator.hazard_nonlinear import compute_governance_action_nonlinear
 
-        suggested_action, hazard = compute_governance_action_nonlinear(new_R, cost_config)
+        suggested_action, hazard, reason = compute_governance_action_nonlinear(new_R, cost_config)
     else:
         from src.core.orchestrator.hazard import compute_governance_action
 
-        suggested_action, hazard = compute_governance_action(new_R, cost_config)
+        suggested_action, hazard, reason = compute_governance_action(new_R, cost_config)
 
     target_status = {
         GovernanceAction.ACTIVE: NodeStatus.ACTIVE,
@@ -149,7 +149,7 @@ def process_node_lifecycle(
             create_escalation_task(
                 node_id=node.node_id,
                 team=node.owner_team,
-                reason=f"Governance escalation (hazard={hazard:.3f})",
+                reason=f"Governance escalation (hazard={hazard:.3f}, reason={reason})",
                 db=db,
                 now=now_utc,
                 deadline_hours=escalation_deadline_hours,
@@ -160,7 +160,7 @@ def process_node_lifecycle(
             from_status=old_status.value, to_status=node.status.value
         ).inc()
 
-    payload = {"new_R": list(new_R), "shocks": shocks, "hazard": hazard}
+    payload = {"new_R": list(new_R), "shocks": shocks, "hazard": hazard, "reason": reason}
     db.add(AuditLog(
         node_id=node.node_id,
         event_type="reliability_updated",

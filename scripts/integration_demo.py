@@ -38,10 +38,9 @@ decision = {"score": 720, "approved": True}
 resp = requests.post(f"{API}/decisions/wrap", json={"node_id": nid, "original_output": decision})
 w = resp.json()["__provenance__"]
 print(f"   Provisional: {w['provisional']}")
-print(f"   Hazard     : {w.get('hazard', 'N/A')}")
-print(f"   Threshold  : {w.get('threshold', 'N/A')}")
+print(f"   Hazard     : {w.get('hazard', 'N/A')} (threshold: {w.get('threshold', 'N/A')})")
+print(f"   Reason     : {w.get('reason', 'N/A')}")
 print(f"   Decision   : {w.get('decision', 'N/A')}")
-
 # ---------- Step 4: Inject regulatory shock ----------
 print("\n3️⃣  Injecting ECB regulatory signal...")
 requests.post(f"{API}/signals/ingest", json={
@@ -68,11 +67,9 @@ resp = requests.post(f"{API}/decisions/wrap", json={"node_id": nid, "original_ou
 w2 = resp.json()["__provenance__"]
 print(f"   Provisional: {w2['provisional']}")
 print(f"   Status     : {w2['status']}")
-print(f"   Hazard     : {w2.get('hazard', 'N/A')}")
-print(f"   Threshold  : {w2.get('threshold', 'N/A')}")
+print(f"   Hazard     : {w2.get('hazard', 'N/A')} (threshold: {w2.get('threshold', 'N/A')})")
+print(f"   Reason     : {w2.get('reason', 'N/A')}")
 print(f"   Decision   : {w2.get('decision', 'N/A')}")
-
-# ---------- Step 7: State transition metrics ----------
 print("\n6️⃣  State transition metrics:")
 resp = requests.get(f"{API}/metrics")
 for line in resp.text.split("\n"):

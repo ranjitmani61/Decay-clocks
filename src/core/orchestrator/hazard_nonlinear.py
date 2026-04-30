@@ -7,8 +7,8 @@ from src.core.orchestrator.hazard import GovernanceAction
 def compute_governance_action_nonlinear(
     reliability: Tuple[float, float, float, float, float],
     cost_config: Dict,
-) -> Tuple[GovernanceAction, float]:
-    """Return (action, hazard) using configurable aggregation mode.
+) -> Tuple[GovernanceAction, float, str]:
+    """Return (action, hazard, reason) using configurable aggregation mode.
 
     Supported modes (set in cost_config["hazard_mode"]):
         - "linear"     – weighted average (same as original)
@@ -26,12 +26,6 @@ def compute_governance_action_nonlinear(
 
     r_s, r_p, r_c, r_r, r_t = reliability
 
-    # 1. Absolute floor check
-    axis_map = {"s": r_s, "p": r_p, "c": r_c, "r": r_r, "t": r_t}
-    for axis_key, floor_val in floor_axes.items():
-        if axis_map.get(axis_key, 1.0) < floor_val:
-            return (GovernanceAction.ESCALATE, 1.0)
-
     # 2. Degradations
     degradations = {
         "s": max(0.0, 1.0 - r_s),
@@ -40,13 +34,6 @@ def compute_governance_action_nonlinear(
         "r": max(0.0, 1.0 - r_r),
         "t": max(0.0, 1.0 - r_t),
     }
-
-    # 3. Hard gate
-    for axis_info in dominant_axes:
-        axis = axis_info["axis"]
-        gate = axis_info.get("gate_threshold", 0.3)
-        if degradations.get(axis, 0.0) > gate:
-            return (GovernanceAction.ESCALATE, 1.0)
 
     # 4. Aggregated hazard
     if mode == "max":
@@ -60,10 +47,23 @@ def compute_governance_action_nonlinear(
 
     hazard = max(0.0, min(1.0, hazard))
 
+    # 1. Absolute floor check
+    axis_map = {"s": r_s, "p": r_p, "c": r_c, "r": r_r, "t": r_t}
+    for axis_key, floor_val in floor_axes.items():
+        if axis_map.get(axis_key, 1.0) < floor_val:
+            return (GovernanceAction.ESCALATE, hazard, "axis_floor_violation")
+
+    # 3. Hard gate
+    for axis_info in dominant_axes:
+        axis = axis_info["axis"]
+        gate = axis_info.get("gate_threshold", 0.3)
+        if degradations.get(axis, 0.0) > gate:
+            return (GovernanceAction.ESCALATE, hazard, "gate_override")
+
     # 5. Cost‑based decision
     expected_loss = hazard * C_err
     if expected_loss > C_int:
-        return (GovernanceAction.ESCALATE, hazard)
+        return (GovernanceAction.ESCALATE, hazard, "cost_exceeded")
     if hazard >= provisional_hazard:
-        return (GovernanceAction.PROVISIONAL, hazard)
-    return (GovernanceAction.ACTIVE, hazard)
+        return (GovernanceAction.PROVISIONAL, hazard, "hazard_threshold")
+    return (GovernanceAction.ACTIVE, hazard, "normal")

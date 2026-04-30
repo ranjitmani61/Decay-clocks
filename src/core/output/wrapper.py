@@ -32,7 +32,16 @@ def wrap_decision(
 
     # Compute current hazard using the active cost config
     cost_cfg = get_active_cost_config(db)
-    _, hazard = compute_governance_action(node.reliability_vector, cost_cfg)
+    
+    if cost_cfg.get("hazard_mode", "linear") != "linear":
+        from src.core.orchestrator.hazard_nonlinear import compute_governance_action_nonlinear
+        suggested_action, hazard, reason = compute_governance_action_nonlinear(node.reliability_vector, cost_cfg)
+    else:
+        suggested_action, hazard, reason = compute_governance_action(node.reliability_vector, cost_cfg)
+
+    decision = "ESCALATE" if node.status == NodeStatus.IN_REVIEW else (
+        "PROVISIONAL" if node.status == NodeStatus.PROVISIONAL else "ACTIVE"
+    )
 
     provenance = {
         "node_id": str(node.node_id),
@@ -48,7 +57,8 @@ def wrap_decision(
         "provisional": node.status in (NodeStatus.PROVISIONAL, NodeStatus.IN_REVIEW),
         "hazard": round(hazard, 4),
         "threshold": round(cost_cfg.get("provisional_hazard", 0.2), 4),
-        "decision": "PROVISIONAL" if node.status in (NodeStatus.PROVISIONAL, NodeStatus.IN_REVIEW) else "ACTIVE",
+        "decision": decision,
+        "reason": reason,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

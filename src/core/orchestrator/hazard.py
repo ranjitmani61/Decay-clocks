@@ -16,7 +16,7 @@ class GovernanceAction(str, Enum):
 def compute_governance_action(
     reliability: Tuple[float, float, float, float, float],
     config: dict,
-) -> Tuple[GovernanceAction, float]:
+) -> Tuple[GovernanceAction, float, str]:
     """Decide governance action based on reliability vector and cost model.
 
     Args:
@@ -29,7 +29,7 @@ def compute_governance_action(
             - floor_axes: dict mapping axis key to minimum allowed value before forced escalation
 
     Returns:
-        (action, hazard_score)
+        (action, hazard_score, reason)
     """
     weights = config["weights"]
     C_err = float(config["C_err"])
@@ -53,14 +53,14 @@ def compute_governance_action(
     axis_lookup = {"s": r_s, "p": r_p, "c": r_c, "r": r_r, "t": r_t}
     for axis_key, floor_val in floors.items():
         if axis_lookup.get(axis_key, 1.0) < floor_val:
-            return (GovernanceAction.ESCALATE, hazard)
+            return (GovernanceAction.ESCALATE, hazard, "axis_floor_violation")
 
     # Cost‑based decision
     expected_loss = hazard * C_err
     if expected_loss > C_int:
-        return (GovernanceAction.ESCALATE, hazard)
+        return (GovernanceAction.ESCALATE, hazard, "cost_exceeded")
 
     if hazard >= prov_thresh:
-        return (GovernanceAction.PROVISIONAL, hazard)
+        return (GovernanceAction.PROVISIONAL, hazard, "hazard_threshold")
 
-    return (GovernanceAction.ACTIVE, hazard)
+    return (GovernanceAction.ACTIVE, hazard, "normal")
