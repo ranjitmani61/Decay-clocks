@@ -14,6 +14,8 @@ def get_active_cost_config(db: Session) -> dict:
             "C_int": 1000.0,
             "provisional_hazard": 0.2,
             "floor_axes": {"r": 0.2, "s": 0.3},
+            "hazard_mode": "linear",
+            "dominant_axes": [],
         }
     return {
         "weights": row.weights,
@@ -21,4 +23,6 @@ def get_active_cost_config(db: Session) -> dict:
         "C_int": row.C_int,
         "provisional_hazard": row.provisional_hazard,
         "floor_axes": row.floor_axes,
+        "hazard_mode": getattr(row, "hazard_mode", "linear") or "linear",
+        "dominant_axes": getattr(row, "dominant_axes", []) or [],
     }

@@ -112,6 +112,8 @@ class CostConfig(Base):
     C_err = Column(Float, nullable=False)
     C_int = Column(Float, nullable=False)
     provisional_hazard = Column(Float, nullable=False)
+    hazard_mode = Column(String, default="linear")
+    dominant_axes = Column(JSON, default=[])
     floor_axes = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=text("now()"))
     environment = Column(String, default="production")

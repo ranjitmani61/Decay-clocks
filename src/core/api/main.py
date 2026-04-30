@@ -1,5 +1,5 @@
 from __future__ import annotations
-import uuid
+import uuid, json
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
@@ -126,6 +126,8 @@ def get_active_cost_config(db: Session) -> dict:
             "C_int": 1000.0,
             "provisional_hazard": 0.2,
             "floor_axes": {"r": 0.2, "s": 0.3},
+            "hazard_mode": "linear",
+            "dominant_axes": [],
         }
     return {
         "weights": row.weights,
@@ -133,6 +135,8 @@ def get_active_cost_config(db: Session) -> dict:
         "C_int": row.C_int,
         "provisional_hazard": row.provisional_hazard,
         "floor_axes": row.floor_axes,
+        "hazard_mode": row.hazard_mode if getattr(row, "hazard_mode", None) else "linear",
+        "dominant_axes": row.dominant_axes if isinstance(row.dominant_axes, list) else (json.loads(row.dominant_axes) if isinstance(row.dominant_axes, str) else []),
     }
 
 @app.post("/signals/ingest")
@@ -187,6 +191,8 @@ class CostConfigSet(BaseModel):
     C_err: float
     C_int: float
     provisional_hazard: float
+    hazard_mode: str = "linear"
+    dominant_axes: list = []
     floor_axes: Dict[str, float]
     environment: str = "production"
 
@@ -207,6 +213,8 @@ def set_cost_config(config: CostConfigSet, db: Session = Depends(get_db)):
         C_int=config.C_int,
         provisional_hazard=config.provisional_hazard,
         floor_axes=config.floor_axes,
+        hazard_mode=config.hazard_mode,
+        dominant_axes=config.dominant_axes if hasattr(config, 'dominant_axes') else [],
         environment=config.environment,
     )
     db.add(new_cfg)
