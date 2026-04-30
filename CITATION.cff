@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use Decay Clocks in your work, please cite it as below."
+title: "Decay Clocks: Multi‑Axis Decision Reliability Governance Layer"
+authors:
+  - family-names: Mani
+    given-names: Ranjit
+repository-code: "https://github.com/ranjitmani61/Decay-clocks"
+abstract: "A multi‑axis decision reliability governance layer with cost‑informed escalation, autonomous resilience, and audit‑ready provenance for automated decision nodes."
+keywords:
+  - AI governance
+  - model reliability
+  - decay clocks
+  - MLOps
+  - risk management
+license: MIT
+version: 0.1.0
+date-released: "2026-04-30"
