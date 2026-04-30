@@ -1,0 +1,120 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dcpass}
+      POSTGRES_DB: ${POSTGRES_DB:-decay_clocks}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-temporal.sql:/docker-entrypoint-initdb.d/init-temporal.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dc} -d ${POSTGRES_DB:-decay_clocks}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/auto-setup:1.26.0
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_PASSWORD:-temporal}
+      POSTGRES_SEEDS: postgres
+    ports:
+      - "127.0.0.1:7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dc}:${POSTGRES_PASSWORD:-dcpass}@postgres:5432/${POSTGRES_DB:-decay_clocks}
+      REDIS_URL: redis://redis:6379/0
+      TEMPORAL_HOST: temporal:7233
+      LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    command: uvicorn src.core.api.main:app --host 0.0.0.0 --port 8000 --log-level info
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dc}:${POSTGRES_PASSWORD:-dcpass}@postgres:5432/${POSTGRES_DB:-decay_clocks}
+      TEMPORAL_HOST: temporal:7233
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    command: python src/worker/run_worker.py
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
