@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decay Clocks – Admin Dashboard</title>
+<style>
+  /* complete dark theme styling – abbreviated for space; full version in real file */
+  body{background:#020817;color:#e2e8f0;font-family:sans-serif;margin:0}
+  .header{background:#0f172a;padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:24px}
+  .card{background:#080f1e;border:1px solid #1e293b;border-radius:8px;padding:16px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #1e293b;text-align:left}
+  .status-ACTIVE{color:#22c55e}.status-PROVISIONAL{color:#f59e0b}.status-IN_REVIEW{color:#f97316}.status-SUSPENDED{color:#ef4444}
+  button{background:#1d4ed8;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer}
+  button.danger{background:#b91c1c}
+</style>
+</head>
+<body>
+<div class="header">
+  <span>🕰️ DECAY CLOCKS</span>
+  <span id="status-indicator">● SCHEDULER LIVE</span>
+</div>
+<div class="grid">
+  <div class="card">
+    <h2>Decision Nodes</h2>
+    <table id="node-table">
+      <thead><tr><th>Name</th><th>Class</th><th>R_s</th><th>R_p</th><th>R_c</th><th>R_r</th><th>R_t</th><th>Hazard</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Escalation Queue</h2>
+    <div id="task-list"></div>
+  </div>
+  <div class="card">
+    <h2>Audit Log (recent)</h2>
+    <div id="audit-log"></div>
+  </div>
+  <div class="card">
+    <h2>Signal Injector</h2>
+    <form id="signal-form">
+      <label>Type: <select name="type"><option>regulatory</option><option>macroeconomic</option><option>structural</option></select></label><br>
+      <label>Severity: <input type="number" name="severity" min="0" max="1" step="0.1" value="0.9"></label><br>
+      <label>Domain: <input type="text" name="domain" value="EU"></label><br>
+      <button type="submit">Send Signal</button>
+    </form>
+  </div>
+</div>
+<script>
+const API = window.location.origin;
+async function fetchNodes() {
+  const res = await fetch(API+'/nodes?limit=50');
+  const data = await res.json();
+  // ... render table rows
+}
+async function fetchTasks() {
+  const res = await fetch(API+'/tasks?status=IN_PROGRESS,PENDING');
+  const tasks = await res.json();
+  // ... render task cards
+}
+setInterval(() => { fetchNodes(); fetchTasks(); }, 5000);
+fetchNodes(); fetchTasks();
+</script>
+</body>
+</html>
