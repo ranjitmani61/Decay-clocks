@@ -26,3 +26,20 @@ def get_active_cost_config(db: Session) -> dict:
         "hazard_mode": getattr(row, "hazard_mode", "linear") or "linear",
         "dominant_axes": getattr(row, "dominant_axes", []) or [],
     }
+
+
+def get_cost_config_for_node(node, db):
+    """Return the cost config pinned to this node, or the global active config."""
+    if node.cost_config_id:
+        row = db.get(CostConfig, node.cost_config_id)
+        if row:
+            return {
+                "weights": row.weights,
+                "C_err": row.C_err,
+                "C_int": row.C_int,
+                "provisional_hazard": row.provisional_hazard,
+                "floor_axes": row.floor_axes,
+                "hazard_mode": row.hazard_mode if row.hazard_mode else "linear",
+                "dominant_axes": row.dominant_axes if isinstance(row.dominant_axes, list) else [],
+            }
+    return get_active_cost_config(db)

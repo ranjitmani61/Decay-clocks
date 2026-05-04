@@ -34,6 +34,7 @@ class NodeStatus(str, PyEnum):
     IN_REVIEW = "IN_REVIEW"
     SUSPENDED = "SUSPENDED"
     RETIRED = "RETIRED"
+    PRE_FAILURE_WARNING = "PRE_FAILURE_WARNING"
 
 
 class Node(Base):
@@ -49,6 +50,7 @@ class Node(Base):
     criticality = Column(SAEnum(Criticality, name="criticality_t"), nullable=False)
     domain_tags = Column(ARRAY(String), default=[])
     environment = Column(String, default="production")
+    cost_config_id = Column(UUID(as_uuid=True), ForeignKey("cost_config.id"), nullable=True)
     r_s = Column(Float, default=1.0)
     r_p = Column(Float, default=1.0)
     r_c = Column(Float, default=1.0)

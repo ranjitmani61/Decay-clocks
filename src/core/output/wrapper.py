@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.core.models.node import Node, NodeStatus
 from src.core.orchestrator.hazard import compute_governance_action
-from src.core.api.config_loader import get_active_cost_config
+from src.core.api.config_loader import get_cost_config_for_node
 
 
 def wrap_decision(
@@ -31,7 +31,7 @@ def wrap_decision(
         raise ValueError(f"Node not found: {node_id}")
 
     # Compute current hazard using the active cost config
-    cost_cfg = get_active_cost_config(db)
+    cost_cfg = get_cost_config_for_node(node, db)
     
     if cost_cfg.get("hazard_mode", "linear") != "linear":
         from src.core.orchestrator.hazard_nonlinear import compute_governance_action_nonlinear

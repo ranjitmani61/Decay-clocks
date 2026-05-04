@@ -20,3 +20,8 @@ STATE_TRANSITIONS = Counter(
     "Total governance state transitions",
     ["from_status", "to_status"],
 )
+
+CSD_WARNINGS = Counter(
+    "decayclocks_csd_warnings_total",
+    "Total CSD early‑warning signals raised",
+)

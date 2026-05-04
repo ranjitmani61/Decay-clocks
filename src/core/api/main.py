@@ -14,7 +14,7 @@ from prometheus_client import generate_latest
 from src.core.models.node import Node, NodeClass, Criticality, CostConfig
 from src.core.orchestrator.pipeline import process_node_lifecycle
 from src.core.api.database import get_db
-from src.core.api.config_loader import get_active_cost_config
+from src.core.api.config_loader import get_active_cost_config, get_cost_config_for_node
 from src.core.api.catalogue import get_catalogue
 from src.core.signals.bus import DEFAULT_DEBOUNCE_HOURS as DEBOUNCE
 from src.core.utils.metrics import REQUEST_COUNT, PIPELINE_RUNS
@@ -44,6 +44,7 @@ class NodeCreate(BaseModel):
     domain_tags: list[str] = []
     decay_alpha: float = 0.01
     environment: str = "production"
+    cost_config_id: Optional[str] = None
 
 class SignalIngest(BaseModel):
     raw_events: list[dict]
@@ -94,6 +95,21 @@ def create_node(node_in: NodeCreate, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Resolve cost_config_id
+    config_id = None
+    if node_in.cost_config_id:
+        try:
+            config_uuid = uuid.UUID(node_in.cost_config_id)
+            row = db.get(CostConfig, config_uuid)
+            if not row:
+                raise HTTPException(status_code=400, detail="cost_config_id not found")
+            config_id = config_uuid
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cost_config_id")
+    else:
+        active_row = db.query(CostConfig).filter(CostConfig.active == True).first()
+        config_id = active_row.id if active_row else None
+
     node = Node(
         node_class=node_class,
         version_ref=node_in.version_ref,
@@ -102,6 +118,7 @@ def create_node(node_in: NodeCreate, db: Session = Depends(get_db)):
         domain_tags=node_in.domain_tags,
         decay_alpha=node_in.decay_alpha,
         environment=node_in.environment,
+        cost_config_id=config_id,
     )
     db.add(node)
     db.commit()
@@ -115,20 +132,6 @@ def get_node(node_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Node not found")
     return serialize_node(node)
 
-def get_active_cost_config(db: Session) -> dict:
-    """Return the currently active cost configuration from the database."""
-    row = db.query(CostConfig).filter(CostConfig.active == True).first()
-    if not row:
-        # Fallback to production defaults
-        return {
-            "weights": {"s": 0.2, "p": 0.2, "c": 0.2, "r": 0.2, "t": 0.2},
-            "C_err": 500.0,
-            "C_int": 1000.0,
-            "provisional_hazard": 0.2,
-            "floor_axes": {"r": 0.2, "s": 0.3},
-            "hazard_mode": "linear",
-            "dominant_axes": [],
-        }
     return {
         "weights": row.weights,
         "C_err": row.C_err,
@@ -154,8 +157,8 @@ def ingest_signals(payload: SignalIngest,
     conditions = [Node.domain_tags.any(tag) for tag in all_tags]
     nodes = db.query(Node).filter(or_(*conditions)).all()
 
-    cost_config = get_active_cost_config(db)
     for node in nodes:
+        node_cost_config = get_cost_config_for_node(node, db)
         process_node_lifecycle(
             node_id=node.node_id,
             db=db,
@@ -163,7 +166,7 @@ def ingest_signals(payload: SignalIngest,
             raw_events=[{**ev, "timestamp": _ensure_datetime(ev.get("timestamp"))} for ev in payload.raw_events],
             now=now,
             debounce_config=DEBOUNCE,
-            cost_config=cost_config,
+            cost_config=node_cost_config,
         )
         PIPELINE_RUNS.inc()
         updated.append(str(node.node_id))
@@ -195,6 +198,7 @@ class CostConfigSet(BaseModel):
     dominant_axes: list = []
     floor_axes: Dict[str, float]
     environment: str = "production"
+    cost_config_id: Optional[str] = None
 
 @app.post("/config/cost")
 def set_cost_config(config: CostConfigSet, db: Session = Depends(get_db)):

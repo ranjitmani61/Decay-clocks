@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from src.core.models.node import Node, NodeStatus, AuditLog, DependencyEdge
 from src.core.orchestrator.pipeline import process_node_lifecycle
 from src.core.orchestrator.hazard import compute_governance_action
-from src.core.utils.metrics import PIPELINE_RUNS, STATE_TRANSITIONS
+from src.core.utils.metrics import PIPELINE_RUNS, STATE_TRANSITIONS, CSD_WARNINGS
+from src.core.engine.csd_integration import check_and_warn_node
+from src.core.api.config_loader import get_cost_config_for_node
 from src.core.engine.propagation import compute_child_degradation
 
 IN_REVIEW_COOLDOWN_DAYS = 7
@@ -221,7 +223,7 @@ def run_scheduled_cycle(
                 raw_events=[],
                 now=now,
                 debounce_config=debounce_config,
-                cost_config=cost_config,
+                cost_config=get_cost_config_for_node(node, db),
             )
             PIPELINE_RUNS.inc()
             count += 1
